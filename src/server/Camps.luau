@@ -107,57 +107,6 @@ local function sandbagWall(parent: Instance, team: string, a: Vector3, b: Vector
 	end
 end
 
-local function barracks(parent: Instance, team: string, cf: CFrame)
-	local model = Instance.new("Model")
-	model.Name = "Barracks"
-	model.Parent = parent
-	local w, d, h = 30, 16, 11
-	local function wall(localPos: Vector3, size: Vector3)
-		local p = part({
-			Name = "BarracksWall",
-			Size = size,
-			CFrame = cf * CFrame.new(localPos),
-			Color = Color3.fromRGB(170, 166, 156),
-			Material = Enum.Material.Concrete,
-			Variant = "Concrete_Board_Formed_A",
-			Parent = model,
-		})
-		destructible(p, team, 150, 3)
-	end
-	-- الخلف (قطعتين) والجوانب
-	wall(Vector3.new(-w / 4, h / 2, d / 2), Vector3.new(w / 2, h, 1))
-	wall(Vector3.new(w / 4, h / 2, d / 2), Vector3.new(w / 2, h, 1))
-	wall(Vector3.new(-w / 2, h / 2, 0), Vector3.new(1, h, d))
-	wall(Vector3.new(w / 2, h / 2, 0), Vector3.new(1, h, d))
-	-- الواجهة مع باب في النص
-	wall(Vector3.new(-w / 2 + 6.5, h / 2, -d / 2), Vector3.new(13, h, 1))
-	wall(Vector3.new(w / 2 - 6.5, h / 2, -d / 2), Vector3.new(13, h, 1))
-	wall(Vector3.new(0, h - 1.5, -d / 2), Vector3.new(4, 3, 1))
-	local roof = part({
-		Name = "BarracksRoof",
-		Size = Vector3.new(w + 2, 1, d + 2),
-		CFrame = cf * CFrame.new(0, h + 0.5, 0),
-		Color = STEEL,
-		Material = Enum.Material.Metal,
-		Variant = "MetalPanels",
-		Parent = model,
-	})
-	destructible(roof, team, 120, 2)
-	local lamp = part({
-		Name = "Lamp",
-		Size = Vector3.new(1.4, 0.4, 1.4),
-		CFrame = cf * CFrame.new(0, h - 0.3, 0),
-		Color = Color3.fromRGB(255, 236, 190),
-		Material = Enum.Material.Neon,
-		CanCollide = false,
-		Parent = model,
-	})
-	local light = Instance.new("PointLight")
-	light.Range = 18
-	light.Brightness = 1.2
-	light.Parent = lamp
-end
-
 local function tent(parent: Instance, team: string, cf: CFrame)
 	local model = Instance.new("Model")
 	model.Name = "Tent"
@@ -300,6 +249,9 @@ local function decorate(parent: Instance, center: CFrame, rng: Random)
 				local a = rng:NextNumber(0, math.pi * 2)
 				local r = rng:NextNumber(60, 80)
 				local at = center * CFrame.new(math.cos(a) * r, 0, math.sin(a) * r) * CFrame.Angles(0, a, 0)
+				if World.InBuilding(at.Position, 8) then
+					continue
+				end
 				if src and src:IsA("Model") then
 					placeModel(src:Clone(), at, parent)
 				elseif src and src:IsA("BasePart") then
@@ -314,77 +266,80 @@ local function decorate(parent: Instance, center: CFrame, rng: Random)
 end
 
 ---------------------------------------------------------------- بناء معسكر
+-- الثكنة نفسها هي غرفة الظهور من مبنى القالب. حولها نحط تحصينات المعسكر.
+-- المواقع مكتوبة لمعسكر الوردي، والأخضر صورة معكوسة حول z = 160 (منتصف الساحة).
 
-local function buildCamp(teamName: string, center: CFrame, color: Color3)
+local function buildCamp(teamName: string, mirror: boolean, color: Color3)
 	local folder = Instance.new("Folder")
 	folder.Name = teamName .. "Camp"
 	folder.Parent = root
 	local team = teamName
 	local rng = Random.new(#teamName * 97)
-
-	-- أرضية المعسكر
-	part({
-		Name = "Foundation",
-		Size = Vector3.new(110, 1, 84),
-		CFrame = center * CFrame.new(0, -0.45, 0),
-		Color = Color3.fromRGB(150, 146, 138),
-		Material = Enum.Material.Concrete,
-		Variant = "Concrete_Ribbed_A",
-		Parent = folder,
-	})
-
-	-- سياج أكياس رمل حول المعسكر، والفتحة جهة الساحة (الأمام = -Z المحلي)
-	local hw, hd = 52, 39
-	local function wp(x, z)
-		return center:PointToWorldSpace(Vector3.new(x, 0, z))
+	local y = World.GroundY
+	local function P(x: number, z: number): Vector3
+		return Vector3.new(x, y, mirror and (320 - z) or z)
 	end
-	sandbagWall(folder, team, wp(-hw, hd), wp(hw, hd)) -- الخلف
-	sandbagWall(folder, team, wp(-hw, -hd), wp(-hw, hd)) -- يسار
-	sandbagWall(folder, team, wp(hw, -hd), wp(hw, hd)) -- يمين
-	sandbagWall(folder, team, wp(-hw, -hd), wp(-14, -hd)) -- أمام يسار
-	sandbagWall(folder, team, wp(14, -hd), wp(hw, -hd)) -- أمام يمين
-
-	barracks(folder, team, center * CFrame.new(0, 0, 22))
-	tent(folder, team, center * CFrame.new(-34, 0, 18) * CFrame.Angles(0, math.rad(90), 0))
-	tent(folder, team, center * CFrame.new(34, 0, 18) * CFrame.Angles(0, math.rad(90), 0))
-	watchtower(folder, team, center * CFrame.new(-42, 0, -28))
-	watchtower(folder, team, center * CFrame.new(42, 0, -28))
-	for i, x in { -20, -16, 16, 20 } do
-		barrel(folder, team, wp(x, -30 + (i % 2) * 3))
+	local function CF(x: number, z: number, yaw: number?): CFrame
+		local face = mirror and math.pi or 0
+		return CFrame.new(P(x, z)) * CFrame.Angles(0, face + (yaw or 0), 0)
 	end
-	flag(folder, team, wp(0, 6), color)
 
+	-- أبراج المراقبة على زوايا الثكنة جهة الساحة
+	watchtower(folder, team, CF(-172, 40))
+	watchtower(folder, team, CF(8, 40))
+	-- أكياس رمل قدّام الثكنة (فيه فتحة قدّام أبواب الثكنة)
+	sandbagWall(folder, team, P(-152, 52), P(-110, 52))
+	sandbagWall(folder, team, P(-44, 52), P(-6, 52))
+	sandbagWall(folder, team, P(-104, 62), P(-50, 62))
+	-- خيام وعلم ورا الثكنة
+	tent(folder, team, CF(-128, -78, math.rad(90)))
+	tent(folder, team, CF(-56, -78, math.rad(90)))
+	flag(folder, team, P(-92, -70), color)
+	-- براميل وقود جنب الثكنة
+	for i, xz in { { 18, -12 }, { 18, -6 }, { 23, -12 }, { 23, -6 } } do
+		barrel(folder, team, P(xz[1], xz[2] + (i > 2 and 0.5 or 0)))
+	end
 	-- صناديق القالب
-	for i = 1, 6 do
+	for i, xz in { { -170, -20 }, { -170, -14 }, { -166, -17 }, { 14, 14 }, { 19, 16 }, { -100, -95 } } do
 		local crate = libraryModel({ "Props", "CrateSmall" })
 		if crate then
-			local x = (i <= 3) and -24 or 24
-			placeModel(crate, center * CFrame.new(x + (i % 3) * 3, 0, -6 + (i % 2) * 4), folder)
+			placeModel(crate, CF(xz[1], xz[2], i * 0.7), folder)
 			destructible(crate, team, 30, 1)
 		end
 	end
+	decorate(folder, CF(-92, -60), rng)
+end
 
-	-- نقاط الظهور
-	local teamObj = Teams:FindFirstChild(teamName)
-	for i = -1, 1 do
-		local s = Instance.new("SpawnLocation")
-		s.Name = teamName .. "CampSpawn"
-		s.Anchored = true
-		s.Size = Vector3.new(6, 1, 6)
-		s.CFrame = center * CFrame.new(i * 9, 0.5, 6)
-		s.Neutral = false
-		s.AllowTeamChangeOnTouch = false
-		s.Duration = 3
-		if teamObj and teamObj:IsA("Team") then
-			s.TeamColor = teamObj.TeamColor
+-- غطاء في الساحة المفتوحة: صخور القالب ومتاريس (ما تنحسب على أي فريق)
+local function buildField()
+	local folder = Instance.new("Folder")
+	folder.Name = "FieldCover"
+	folder.Parent = root
+	local lib = ServerStorage:FindFirstChild("Laser Tag Template Library")
+	local rocks = lib and lib:FindFirstChild("Natural") and lib.Natural:FindFirstChild("Rocks")
+	local options = rocks and rocks:GetChildren() or {}
+	local rng = Random.new(77)
+	local placed = 0
+	local tries = 0
+	while placed < 18 and tries < 200 do
+		tries += 1
+		local x = rng:NextNumber(-230, 80)
+		local z = rng:NextNumber(70, 250)
+		local onRoad = math.abs(x - World.LaneX) < 18 or math.abs(z - 160) < 14
+		if not onRoad and #options > 0 then
+			placed += 1
+			local src = options[rng:NextInteger(1, #options)]
+			local at = CFrame.new(x, World.GroundY, z) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+			if src:IsA("Model") then
+				placeModel(src:Clone(), at, folder)
+			elseif src:IsA("BasePart") then
+				local p = src:Clone()
+				p.Anchored = true
+				p.CFrame = at * CFrame.new(0, p.Size.Y / 2 - 0.5, 0)
+				p.Parent = folder
+			end
 		end
-		s.Color = color
-		s.Material = Enum.Material.Neon
-		s.Transparency = 0.4
-		s.Parent = folder
 	end
-
-	decorate(folder, center, rng)
 end
 
 function Camps.Build()
@@ -395,9 +350,9 @@ function Camps.Build()
 	root = Instance.new("Folder")
 	root.Name = "Camps"
 	root.Parent = Workspace
-	local y = World.GroundY
-	buildCamp("Pink", CFrame.lookAt(Vector3.new(World.LaneX, y, -150), Vector3.new(World.LaneX, y, 0)), Color3.fromRGB(255, 90, 170))
-	buildCamp("Green", CFrame.lookAt(Vector3.new(World.LaneX, y, 480), Vector3.new(World.LaneX, y, 300)), Color3.fromRGB(80, 220, 110))
+	buildCamp("Pink", false, Color3.fromRGB(255, 90, 170))
+	buildCamp("Green", true, Color3.fromRGB(80, 220, 110))
+	buildField()
 	Camps.Publish()
 end
 

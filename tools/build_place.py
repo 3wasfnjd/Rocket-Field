@@ -16,6 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 _ref = itertools.count(1)
 REMOVE_FROM_STARTERPACK = {"Blaster", "AutoBlaster"}
 
+# من مبنى القالب نبقي غرفتي الظهور فقط (طرفي المبنى) كثكنات للفريقين، والوسط يتشال ويصير ساحة مفتوحة.
+# المناطق بإحداثيات العالم (x0, x1, z0, z1)
+KEEP_REGIONS = [
+    (-160.0, -20.0, -50.0, 26.0),   # ثكنة الوردي
+    (-160.0, -20.0, 294.0, 370.0),  # ثكنة الأخضر
+]
+CARVE_FOLDERS = {"Layout", "Level_Art", "Forcefields"}
+DROP_FOLDERS = {"playerContainment"}
+
 
 def name_of(i):
     return i.findtext("Properties/string[@name='Name']")
@@ -51,6 +60,78 @@ def folder_tree(parent, directory: Path, name: str):
             script(f, p)
 
 
+def _props(it):
+    p = it.find("Properties")
+    return p if p is not None else ET.Element("Properties")
+
+
+def _vec(props, name):
+    node = next((c for c in props if c.get("name") == name), None)
+    if node is None:
+        return None, None
+    return node, {e.tag: float(e.text) for e in node}
+
+
+def _world_extent(cf, size):
+    hx = abs(cf["R00"]) * size["X"] / 2 + abs(cf["R01"]) * size["Y"] / 2 + abs(cf["R02"]) * size["Z"] / 2
+    hz = abs(cf["R20"]) * size["X"] / 2 + abs(cf["R21"]) * size["Y"] / 2 + abs(cf["R22"]) * size["Z"] / 2
+    return (cf["X"] - hx, cf["X"] + hx, cf["Z"] - hz, cf["Z"] + hz)
+
+
+def _axis_aligned(cf):
+    vals = [cf[k] for k in ("R00", "R01", "R02", "R10", "R11", "R12", "R20", "R21", "R22")]
+    return all(abs(v) < 1e-3 or abs(abs(v) - 1) < 1e-3 for v in vals) and abs(abs(cf["R11"]) - 1) < 1e-3
+
+
+def carve_building(root):
+    """Keep the two spawn rooms of the template building, remove the middle (open field)."""
+    ws = service(root, "Workspace")
+    parent = {}
+    for p in ws.iter("Item"):
+        for c in p.findall("Item"):
+            parent[c] = p
+    removed = kept = cropped = 0
+    for folder in [c for c in ws.findall("Item") if name_of(c) in CARVE_FOLDERS]:
+        for drop in [c for c in folder.iter("Item") if name_of(c) in DROP_FOLDERS]:
+            parent[drop].remove(drop)
+        for it in list(folder.iter("Item")):
+            props = _props(it)
+            cfn, cf = _vec(props, "CFrame")
+            szn, size = _vec(props, "size")
+            if cf is None or size is None or "R00" not in cf:
+                continue
+            x0, x1, z0, z1 = _world_extent(cf, size)
+            inside = any(a <= cf["X"] <= b and c <= cf["Z"] <= d for a, b, c, d in KEEP_REGIONS)
+            overlap = None
+            for a, b, c, d in KEEP_REGIONS:
+                ox0, ox1, oz0, oz1 = max(x0, a), min(x1, b), max(z0, c), min(z1, d)
+                if ox1 - ox0 > 0.5 and oz1 - oz0 > 0.5:
+                    overlap = (ox0, ox1, oz0, oz1)
+            if overlap and it.get("class") == "Part" and _axis_aligned(cf):
+                ox0, ox1, oz0, oz1 = overlap
+                if (ox0, ox1, oz0, oz1) != (x0, x1, z0, z1):
+                    wx, wz = ox1 - ox0, oz1 - oz0
+                    swapped = abs(cf["R02"]) > 0.5  # المحور المحلي X على محور العالم Z
+                    for e in szn:
+                        if e.tag == ("Z" if swapped else "X"):
+                            e.text = repr(wx)
+                        elif e.tag == ("X" if swapped else "Z"):
+                            e.text = repr(wz)
+                    for e in cfn:
+                        if e.tag == "X":
+                            e.text = repr((ox0 + ox1) / 2)
+                        elif e.tag == "Z":
+                            e.text = repr((oz0 + oz1) / 2)
+                    cropped += 1
+                kept += 1
+            elif inside:
+                kept += 1
+            elif it in parent:
+                parent[it].remove(it)
+                removed += 1
+    print(f"building carved: kept {kept}, cropped {cropped}, removed {removed}")
+
+
 def service(root, cls):
     return next(i for i in root.findall("Item") if i.get("class") == cls)
 
@@ -68,6 +149,7 @@ def main():
         sp.remove(t)
         print("removed StarterPack/" + name_of(t))
 
+    carve_building(root)
     folder_tree(service(root, "ReplicatedStorage"), ROOT / "src/shared", "RocketShared")
     folder_tree(service(root, "ServerScriptService"), ROOT / "src/server", "RocketServer")
     player = service(root, "StarterPlayer")

@@ -12,13 +12,12 @@ local RESPAWN = 35
 -- مواقع ممكنة: وسط الساحة، وجانبي الطريق برا الساحة
 local SPOTS = {
 	Vector3.new(World.LaneX, 0, 160),
-	Vector3.new(World.LaneX - 35, 0, 120),
-	Vector3.new(World.LaneX + 35, 0, 200),
-	Vector3.new(-230, 0, 60),
-	Vector3.new(-230, 0, 260),
-	Vector3.new(270, 0, 160),
-	Vector3.new(World.LaneX + 90, 0, -110),
-	Vector3.new(World.LaneX - 90, 0, 440),
+	Vector3.new(World.LaneX - 70, 0, 110),
+	Vector3.new(World.LaneX + 70, 0, 210),
+	Vector3.new(-210, 0, 160),
+	Vector3.new(60, 0, 160),
+	Vector3.new(World.LaneX - 40, 0, 230),
+	Vector3.new(World.LaneX + 40, 0, 90),
 }
 
 local folder = Instance.new("Folder")
@@ -31,10 +30,6 @@ local function groundAt(p: Vector3): Vector3?
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	local exclude = { folder }
-	local layout = Workspace:FindFirstChild("Layout")
-	if layout and layout:FindFirstChild("playerContainment") then
-		table.insert(exclude, layout.playerContainment)
-	end
 	params.FilterDescendantsInstances = exclude
 	local hit = Workspace:Raycast(Vector3.new(p.X, 24, p.Z), Vector3.new(0, -60, 0), params)
 	return hit and hit.Position or nil

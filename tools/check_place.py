@@ -58,7 +58,8 @@ def main(path):
         ["ReplicatedStorage", "Blaster", "Utility", "canPlayerDamageHumanoid"],
         ["ServerStorage", "Laser Tag Template Library", "Props", "CrateSmall"],
         ["Workspace", "Layout", "Walls"],
-        ["Workspace", "Layout", "playerContainment"],
+        ["Workspace", "SpawnLocations", "PinkSpawnLocation"],
+        ["Workspace", "SpawnLocations", "GreenSpawnLocation"],
     ):
         if find(need) is None:
             errors.append("missing template piece " + "/".join(need))
