@@ -1,0 +1,52 @@
+name: Build Rocket Field
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Luau tools
+        run: |
+          set -e
+          mkdir -p bin
+          curl -sSL -o luau.zip "https://github.com/luau-lang/luau/releases/latest/download/luau-ubuntu.zip"
+          unzip -o -q luau.zip -d bin
+          chmod +x bin/*
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+
+      - name: Syntax check (luau-compile)
+        run: |
+          fail=0
+          for f in $(find src -name '*.luau'); do
+            if luau-compile --binary "$f" > /dev/null 2> err.txt; then
+              echo "ok   $f"
+            else
+              echo "FAIL $f"; cat err.txt; echo "::error file=$f::$(head -c 300 err.txt)"; fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Build place (template + src)
+        run: python3 tools/build_place.py --out RocketField.rbxlx
+
+      - name: Check place file
+        run: python3 tools/check_place.py RocketField.rbxlx
+
+      - name: Update download link (latest release)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest RocketField.rbxlx \
+            --title "ميدان الصواريخ — آخر نسخة" \
+            --notes "آخر بناء من الفرع main (${GITHUB_SHA::7}). افتح RocketField.rbxlx في Roblox Studio." \
+            --latest

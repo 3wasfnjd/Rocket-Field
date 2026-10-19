@@ -1,0 +1,5 @@
+*.rbxl
+/RocketField.rbxlx
+bin/
+luau.zip
+err.txt
