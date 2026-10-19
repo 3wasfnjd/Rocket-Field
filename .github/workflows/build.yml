@@ -25,7 +25,7 @@ jobs:
       - name: Syntax check (luau-compile)
         run: |
           fail=0
-          for f in $(find src -name '*.luau'); do
+          for f in $(find src tools/patches -name '*.luau'); do
             if luau-compile --binary "$f" > /dev/null 2> err.txt; then
               echo "ok   $f"
             else

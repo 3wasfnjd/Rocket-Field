@@ -16,6 +16,47 @@ World.MapMin = Vector3.new(-360, 0, -230)
 World.MapMax = Vector3.new(220, 0, 550)
 World.FieldCenter = Vector3.new(World.LaneX, 4, 160)
 
+-- مواقع المعسكر مكتوبة لمعسكر الوردي، والأخضر صورة معكوسة حول z = 160 (منتصف الساحة)
+function World.Mirror(team: string, x: number, z: number, y: number?): Vector3
+	return Vector3.new(x, y or World.GroundY, team == "Green" and (320 - z) or z)
+end
+function World.Face(team: string): number
+	return team == "Green" and math.pi or 0
+end
+function World.Enemy(team: string): string
+	return team == "Green" and "Pink" or "Green"
+end
+-- وسط المعسكر (الكمبيوتر يطل عليه من فوق)
+function World.CampCenter(team: string): Vector3
+	return World.Mirror(team, -77, -15)
+end
+-- محطة الصواريخ والمضادات (شرق الثكنة) — ما تتأثر بالانفجارات ولا تنحفر الأرض تحتها
+World.StationSpots = {
+	console = { 6, -2 },
+	pad = { 40, -22 },
+	aa = { { 34, 24 }, { -188, 24 }, { -92, -104 } },
+}
+World.Protected = {} :: { { p: Vector3, r: number } }
+for _, team in { "Pink", "Green" } do
+	local s = World.StationSpots
+	table.insert(World.Protected, { p = World.Mirror(team, s.console[1], s.console[2]), r = 9 })
+	table.insert(World.Protected, { p = World.Mirror(team, s.pad[1], s.pad[2]), r = 15 })
+	for _, a in s.aa do
+		table.insert(World.Protected, { p = World.Mirror(team, a[1], a[2]), r = 8 })
+	end
+end
+
+function World.IsProtected(p: Vector3, margin: number?): boolean
+	local m = margin or 0
+	for _, z in World.Protected do
+		local d = Vector3.new(p.X - z.p.X, 0, p.Z - z.p.Z).Magnitude
+		if d < z.r + m then
+			return true
+		end
+	end
+	return false
+end
+
 function World.InBuilding(p: Vector3, margin: number?): boolean
 	local m = margin or 0
 	for _, b in World.Buildings do
@@ -23,7 +64,19 @@ function World.InBuilding(p: Vector3, margin: number?): boolean
 			return true
 		end
 	end
-	return false
+	return World.IsProtected(p, m)
+end
+
+-- الهدف لازم يكون في نص العدو من الساحة وداخل الخريطة
+function World.ClampTarget(team: string, p: Vector3): Vector3
+	local x = math.clamp(p.X, World.MapMin.X + 5, World.MapMax.X - 5)
+	local z = math.clamp(p.Z, World.MapMin.Z + 5, World.MapMax.Z - 5)
+	if team == "Pink" then
+		z = math.max(z, 170)
+	else
+		z = math.min(z, 150)
+	end
+	return Vector3.new(x, math.clamp(p.Y, World.GroundY - 20, World.GroundY + 60), z)
 end
 
 local function fillRect(minX, maxX, minZ, maxZ, material)
@@ -100,7 +153,7 @@ end
 
 -- حفرة في الأرض (برا المباني)
 function World.Crater(pos: Vector3, radius: number)
-	if World.InBuilding(pos, 4) or pos.Y > World.GroundY + 4 then
+	if World.InBuilding(pos, radius + 3) or pos.Y > World.GroundY + 4 then
 		return
 	end
 	pcall(function()

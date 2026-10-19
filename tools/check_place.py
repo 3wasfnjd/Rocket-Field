@@ -1,4 +1,4 @@
-"""Structural check of RocketField.rbxlx: our scripts are in place, blasters removed, template systems intact."""
+"""Structural check of RocketField.rbxlx: our scripts are in place, laser blasters kept, template patched and intact."""
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -45,10 +45,29 @@ def main(path):
 
     sp = services.get("StarterPack")
     left = [name_of(c) for c in sp.findall("Item")] if sp is not None else []
-    if any(n in ("Blaster", "AutoBlaster") for n in left):
-        errors.append("laser blasters still in StarterPack")
+    for n in ("Blaster", "AutoBlaster"):
+        if n in left:
+            print("ok   StarterPack/" + n + " (personal weapon)")
+        else:
+            errors.append("StarterPack/" + n + " missing")
+
+    def source(path):
+        node = find(path)
+        if node is None:
+            return None
+        return next((c.text or "" for c in node.find("Properties") if c.get("name") == "Source"), "")
+
+    scoring = source(["ServerScriptService", "Gameplay", "Scripts", "Scoring"])
+    if scoring is None or "team:SetAttribute(Constants.TEAM_SCORE_ATTRIBUTE, score)" in scoring:
+        errors.append("Scoring not patched (team score still summed from players)")
     else:
-        print("ok   blasters removed from StarterPack")
+        print("ok   Scoring patched")
+    tdm = source(["ServerScriptService", "Gameplay", "Scripts", "Modes", "TDM"])
+    want = (ROOT / "tools/patches/TDM.luau").read_text(encoding="utf-8")
+    if tdm is None or re.sub(r"\s+", "", tdm) != re.sub(r"\s+", "", want):
+        errors.append("TDM mode not replaced")
+    else:
+        print("ok   TDM replaced (destroy-the-camp)")
 
     for need in (
         ["ServerScriptService", "Gameplay", "Scripts", "Scoring"],

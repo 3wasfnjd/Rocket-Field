@@ -300,7 +300,7 @@ local function buildCamp(teamName: string, mirror: boolean, color: Color3)
 		barrel(folder, team, P(xz[1], xz[2] + (i > 2 and 0.5 or 0)))
 	end
 	-- صناديق القالب
-	for i, xz in { { -170, -20 }, { -170, -14 }, { -166, -17 }, { 14, 14 }, { 19, 16 }, { -100, -95 } } do
+	for i, xz in { { -170, -20 }, { -170, -14 }, { -166, -17 }, { 14, 14 }, { 19, 16 }, { -112, -100 } } do
 		local crate = libraryModel({ "Props", "CrateSmall" })
 		if crate then
 			placeModel(crate, CF(xz[1], xz[2], i * 0.7), folder)
@@ -357,10 +357,19 @@ function Camps.Build()
 end
 
 -- نسبة سلامة كل معسكر في سمات Workspace (الواجهة تقراها)
+-- ونتيجة كل فريق (اللي تعرضها واجهة الجولات في القالب) = نسبة تدميره لمعسكر العدو
 function Camps.Publish()
 	for team, total in totals do
 		local pct = total > 0 and math.floor(100 * (remaining[team] or 0) / total + 0.5) or 0
+		-- نخلي 0% بس لما ينهدم كل شي فعلاً
+		if pct == 0 and (remaining[team] or 0) > 0 then
+			pct = 1
+		end
 		Workspace:SetAttribute(team .. "CampHealth", pct)
+		local enemy = Teams:FindFirstChild(World.Enemy(team))
+		if enemy then
+			enemy:SetAttribute("score", 100 - pct)
+		end
 	end
 end
 

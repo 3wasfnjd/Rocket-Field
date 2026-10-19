@@ -4,7 +4,9 @@
   src/server  -> ServerScriptService/RocketServer           (*.server.luau = Script, others ModuleScript)
   src/client  -> StarterPlayer/StarterPlayerScripts/RocketClient (*.client.luau = LocalScript)
 
-The template's laser blasters are removed from StarterPack (our launchers replace them).
+The template's laser Blaster and AutoBlaster stay in StarterPack as the personal weapons.
+Template patches: Scoring no longer sums player scores into the team "score" (our camps write it),
+and the TDM mode is replaced with tools/patches/TDM.luau (destroy the enemy camp).
 usage: python3 tools/build_place.py [--base base/LaserTag-Template.rbxlx] [--out RocketField.rbxlx]
 """
 import argparse
@@ -14,7 +16,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 _ref = itertools.count(1)
-REMOVE_FROM_STARTERPACK = {"Blaster", "AutoBlaster"}
+REMOVE_FROM_STARTERPACK: set = set()
+SCORING_TEAM_LINE = "team:SetAttribute(Constants.TEAM_SCORE_ATTRIBUTE, score)"
+SCORING_PATCH = "-- ميدان الصواريخ: نتيجة الفريق = نسبة تدمير معسكر العدو (RocketServer/Camps)\n\tlocal _ = score"
 
 # من مبنى القالب نبقي غرفتي الظهور فقط (طرفي المبنى) كثكنات للفريقين، والوسط يتشال ويصير ساحة مفتوحة.
 # المناطق بإحداثيات العالم (x0, x1, z0, z1)
@@ -132,6 +136,29 @@ def carve_building(root):
     print(f"building carved: kept {kept}, cropped {cropped}, removed {removed}")
 
 
+def find_path(root, path):
+    node = service(root, path[0])
+    for n in path[1:]:
+        node = next((c for c in node.findall("Item") if name_of(c) == n), None)
+        if node is None:
+            raise SystemExit("template piece missing: " + "/".join(path))
+    return node
+
+
+def source_node(it):
+    return next(c for c in it.find("Properties") if c.get("name") == "Source")
+
+
+def patch_template(root):
+    scoring = source_node(find_path(root, ["ServerScriptService", "Gameplay", "Scripts", "Scoring"]))
+    if SCORING_TEAM_LINE not in (scoring.text or ""):
+        raise SystemExit("Scoring: team score line not found (template changed?)")
+    scoring.text = scoring.text.replace(SCORING_TEAM_LINE, SCORING_PATCH)
+    tdm = source_node(find_path(root, ["ServerScriptService", "Gameplay", "Scripts", "Modes", "TDM"]))
+    tdm.text = (ROOT / "tools/patches/TDM.luau").read_text(encoding="utf-8")
+    print("patched template Scoring + TDM (destroy-the-camp mode)")
+
+
 def service(root, cls):
     return next(i for i in root.findall("Item") if i.get("class") == cls)
 
@@ -150,6 +177,7 @@ def main():
         print("removed StarterPack/" + name_of(t))
 
     carve_building(root)
+    patch_template(root)
     folder_tree(service(root, "ReplicatedStorage"), ROOT / "src/shared", "RocketShared")
     folder_tree(service(root, "ServerScriptService"), ROOT / "src/server", "RocketServer")
     player = service(root, "StarterPlayer")
